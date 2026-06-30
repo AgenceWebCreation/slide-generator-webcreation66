@@ -90,48 +90,63 @@ app.post('/generate-carousel', async (req, res) => {
 
 // ─────────────────────────────────────────────────────────────────────
 // POST /generate-ai-carousel
-// Génère le texte avec Claude + les slides visuels
-// Body: { topic, pillar, network, api_key_claude }
+// Génère le texte avec Groq (gratuit) + les slides visuels
+// Body: { topic, pillar, network, groq_api_key }
 // ─────────────────────────────────────────────────────────────────────
 app.post('/generate-ai-carousel', async (req, res) => {
   try {
-    const { topic, pillar = 'expert', network = 'instagram', api_key_claude } = req.body;
+    const { topic, pillar = 'expert', network = 'instagram', groq_api_key } = req.body;
 
-    // 1. Générer le contenu avec Claude
-    const claudeRes = await fetch('https://api.anthropic.com/v1/messages', {
+    if (!groq_api_key) {
+      return res.status(400).json({ success: false, error: 'groq_api_key manquant' });
+    }
+
+    const templateName = pillar === 'local' ? 'local' : pillar === 'realisation' ? 'realisation' : 'expert';
+
+    // 1. Générer le contenu avec Groq (API OpenAI-compatible, gratuit)
+    const groqRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-api-key': api_key_claude,
-        'anthropic-version': '2023-06-01'
+        'Authorization': `Bearer ${groq_api_key}`
       },
       body: JSON.stringify({
-        model: 'claude-haiku-4-5-20251001',
+        model: 'llama-3.3-70b-versatile',
         max_tokens: 1200,
+        temperature: 0.7,
         messages: [{
+          role: 'system',
+          content: 'Tu es expert en marketing digital pour une agence web freelance (WebCréation66, Perpignan). Tu réponds UNIQUEMENT avec du JSON valide, sans texte avant ni après, sans markdown, sans balises ```.'
+        }, {
           role: 'user',
-          content: `Tu es expert en marketing digital pour une agence web freelance (WebCréation66, Perpignan).
-Génère un carrousel de 5 slides sur ce sujet : "${topic}"
+          content: `Génère un carrousel de 5 slides sur ce sujet : "${topic}"
 Pilier : ${pillar} (expert=conseils pro, realisation=avant/après projet, local=ancrage Perpignan/66)
 
-Réponds UNIQUEMENT avec ce JSON exact, sans texte avant ni après :
+Réponds UNIQUEMENT avec ce JSON exact :
 {
-  "template": "${pillar === 'local' ? 'local' : pillar === 'realisation' ? 'realisation' : 'expert'}",
+  "template": "${templateName}",
   "caption": "texte du post réseaux sociaux avec hashtags (max 300 caractères)",
   "slides": [
     { "slide_type": "cover", "title": "titre accrocheur court", "subtitle": "sous-titre", "tag": "label court" },
     { "slide_type": "content", "number": "1", "title": "titre slide 2", "content": ["point A", "point B", "point C"] },
     { "slide_type": "content", "number": "2", "title": "titre slide 3", "content": ["point A", "point B", "point C"] },
     { "slide_type": "content", "number": "3", "title": "titre slide 4", "content": ["point A", "point B"] },
-    { "slide_type": "cta", "title": "Votre [sujet] mérite mieux", "cta_text": "Audit gratuit → webcreation66@gmail.com", "benefit1": "Devis sous 24h", "benefit2": "16 ans d'expérience", "benefit3": "100% sur mesure" }
+    { "slide_type": "cta", "title": "Votre ${topic} mérite mieux", "cta_text": "Audit gratuit → webcreation66@gmail.com", "benefit1": "Devis sous 24h", "benefit2": "16 ans d'expérience", "benefit3": "100% sur mesure" }
   ]
 }`
         }]
       })
     });
 
-    const claudeData = await claudeRes.json();
-    const rawText = claudeData.content[0].text.trim();
+    if (!groqRes.ok) {
+      const err = await groqRes.text();
+      throw new Error(`Groq API error ${groqRes.status}: ${err}`);
+    }
+
+    const groqData = await groqRes.json();
+    let rawText = groqData.choices[0].message.content.trim();
+    // Nettoyer les éventuels blocs markdown
+    rawText = rawText.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim();
     const carousel = JSON.parse(rawText);
 
     // 2. Générer les images
