@@ -3,6 +3,16 @@ const puppeteer = require('puppeteer');
 const { templateExpert, templateRealisation, templateChiffre, templateLocal, templateCTA } = require('./templates');
 
 const app = express();
+
+// ── CORS — autoriser les requêtes depuis file:// et tout domaine ────
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  if (req.method === 'OPTIONS') return res.sendStatus(200);
+  next();
+});
+
 app.use(express.json({ limit: '2mb' }));
 
 // ── Lancer le browser une seule fois au démarrage ───────────────────
